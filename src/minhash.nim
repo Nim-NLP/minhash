@@ -61,11 +61,11 @@ proc fingerprint*(self:MinHasher64, text:string): auto =
 
     result = minhash_64(text, self.seeds, self.char_ngram)
 
-proc jaccard* [T](self:T, doc1, doc2:string):int=
+proc jaccard* [T](self:T, doc1, doc2:string):float=
     let 
         f_a = toSet(self.fingerprint(doc1))
         f_b = toSet(self.fingerprint(doc2))
-    return len( intersection(f_a , f_b)) div len( union(f_a, f_b))
+    return len( intersection(f_a , f_b)) / len( union(f_a, f_b))
     
 proc initMinHasher*[T](seeds:seq[SomeInteger], char_ngram=8,random_state=0):T=
     result.char_ngram = char_ngram
