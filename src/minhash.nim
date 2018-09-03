@@ -33,7 +33,7 @@ proc minhash64*(str:string, seeds:openArray[uint32],char_ngram:int) : auto =
         minhash = INT64_MAX
         for i in 0..<(strlen - char_ngram + 1):
             MurmurHash3_x64_128(str, char_ngram, cast[uint32](result[s]), hashes)
-            if hashes[0] < cast[int64](minhash):
+            if  cast[uint64](hashes[0]) < minhash:
                 minhash = cast[uint64](hashes[0])
         result[s] = minhash
 
@@ -50,7 +50,7 @@ proc minhash32*(str: string, seeds:openArray[uint32],char_ngram:int) : auto =
             MurmurHash3_x86_32(str, char_ngram, seeds[s], hashes)
             if cast[uint32](hashes[0]) < minhash:
                 minhash = cast[uint32](hashes[0])
-        result[s] = cast[uint32](minhash)
+        result[s] = minhash
 
 proc fingerprint*(self:MinHasher32, text:string): auto =
  
@@ -76,7 +76,7 @@ proc initMinHasher* [T](seeds:int, char_ngram=8,random_state=0):T=
     result.char_ngram = char_ngram
     var ran = initRand(0)
     var sed = newSeq[uint32](seeds)
-    result.seeds = map(sed,proc(x:uint32):uint32 = cast[uint32](ran.rand( int(1e6))))
+    result.seeds = map(sed,proc(x:uint32):uint32 = cast[uint32](ran.rand( 1e6)))
     
 when isMainModule:
     var str = "aaa"
