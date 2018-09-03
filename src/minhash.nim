@@ -9,6 +9,7 @@ import private/murmur3
 const 
     UINT64_MAX = 9223372036854775807'u64
     UINT32_MAX = 4294967295'u32
+    defaultRandMax:int32 = 1000000
 
 type 
     MinHasher64* = object
@@ -64,20 +65,17 @@ proc jaccard* [T](self:T, doc1, doc2:string):int=
     let 
         f_a = toSet(self.fingerprint(doc1))
         f_b = toSet(self.fingerprint(doc2))
-   
     return len( intersection(f_a , f_b)) div len( union(f_a, f_b))
     
 proc initMinHasher*[T](seeds:seq[SomeInteger], char_ngram=8,random_state=0):T=
     result.char_ngram = char_ngram
-    let rand = initRand(random_state)
     result.seeds = seeds
 
 proc initMinHasher* [T](seeds:int, char_ngram=8,random_state=0):T=
     result.char_ngram = char_ngram
-    var ran = initRand(0)
     var sed = newSeq[uint32](seeds)
-    result.seeds = map(sed,proc(x:uint32):uint32 = cast[uint32](ran.rand( 1e6)))
-    
+    result.seeds = map(sed,proc(x:uint32):uint32 = cast[uint32](rand(defaultRandMax)))
+
 when isMainModule:
     
     let hasher =  initMinHasher[MinHasher64](100)
