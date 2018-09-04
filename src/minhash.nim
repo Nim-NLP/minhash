@@ -1,6 +1,7 @@
 # minhash
 # Copyright zhoupeng
 # Nim implementation of minhash algoritim
+# port from https://github.com/mattilyra/LSH/blob/3db37cf07eefa3276e7409b12e73f30f596236ae/lsh/cMinhash.pyx
 import random
 import sets
 import sequtils
@@ -23,17 +24,28 @@ type
 
 proc zeros*(N: int, A: typedesc): auto = newSeq[A](N)
 
+iterator slide(content:string, width=4) : string {.closure.} =
+    let 
+        maxLen = max(content.len - width + 1, 1)
+    var pos:int
+    for i in 0..<maxLen:
+        pos = i + width
+        yield content[i..<pos]
+
 proc minhash64*(str:string, seeds:openArray[uint32],char_ngram:int) : auto =
     let strlen = str.len
     let num_seeds = seeds.len
+
     var 
         hashes:array[2,uint64]
-        minhash:uint64
+        minhash:uint64 = UINT64_MAX
+        ngrams:string
+        slider = slide
     result = zeros(num_seeds,uint64 )
     for s in 0..<num_seeds:
-        minhash = UINT64_MAX
-        for i in 0..<(strlen - char_ngram + 1):
-            MurmurHash3_x64_128(str, char_ngram, cast[uint32](result[s]), hashes)
+        while not finished(slider):
+            ngrams = slider(str,char_ngram)
+            MurmurHash3_x64_128(ngrams, char_ngram, cast[uint32](result[s]), hashes)
             if  hashes[0] < minhash:
                 minhash = hashes[0]
         result[s] = minhash
@@ -43,12 +55,14 @@ proc minhash32*(str: string, seeds:openArray[uint32],char_ngram:int) : auto =
     let num_seeds = seeds.len
     var 
         hashes:array[2,uint32]
-        minhash:uint32
+        minhash:uint32 = UINT32_MAX
+        ngrams:string
+        slider = slide
     result = zeros(num_seeds,uint32 )
     for s in 0..<num_seeds:
-        minhash = UINT32_MAX
-        for i in 0..<(strlen - char_ngram + 1):
-            MurmurHash3_x86_32(str, char_ngram, seeds[s], hashes)
+        while not finished(slider):
+            ngrams = slider(str,char_ngram)
+            MurmurHash3_x86_32(ngrams, char_ngram, seeds[s], hashes)
             if hashes[0] < minhash:
                 minhash = hashes[0]
         result[s] = minhash
@@ -78,7 +92,7 @@ proc initMinHasher* [T](seeds:int, char_ngram=8,random_state=0):T=
 
 when isMainModule:
     
-    let hasher =  initMinHasher[MinHasher64](100)
+    let hasher =  initMinHasher[MinHasher32](100,3)
     assert hasher.jaccard("This is a doc", "This is a doc") == 1
 
     let high_j = hasher.jaccard("This is a doc", "That is a doc")
