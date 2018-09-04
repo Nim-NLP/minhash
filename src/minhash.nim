@@ -5,7 +5,7 @@
 import random
 import sets
 import sequtils
-import private/murmur3
+import hash/murmur3
 
 const 
     UINT64_MAX = 18446744073709551615'u64
@@ -73,11 +73,23 @@ proc fingerprint*(self:MinHasher32, text:string): seq[uint32] =
 proc fingerprint*(self:MinHasher64, text:string): seq[uint64] =
     result = minhash_64(text, self.seeds, self.char_ngram)
 
-proc jaccard*[T](self:T, doc1, doc2:string):float=
+# proc jaccard*[T](self:T, doc1, doc2:string):float=
+#     let 
+#         f_a = toSet(self.fingerprint(doc1))
+#         f_b = toSet(self.fingerprint(doc2))
+#     return len( intersection(f_a , f_b)) / len( union(f_a, f_b))
+
+proc jaccard*(self:MinHasher32, doc1, doc2:string):float=
     let 
         f_a = toSet(self.fingerprint(doc1))
         f_b = toSet(self.fingerprint(doc2))
     return len( intersection(f_a , f_b)) / len( union(f_a, f_b))
+
+proc jaccard*(self:MinHasher64, doc1, doc2:string):float=
+    let 
+        f_a = toSet(self.fingerprint(doc1))
+        f_b = toSet(self.fingerprint(doc2))
+    return len( intersection(f_a , f_b)) / len( union(f_a, f_b))    
     
 proc initMinHasher*[T](seeds:seq[SomeInteger], char_ngram=8,random_state=0):T=
     result.char_ngram = char_ngram
