@@ -8,7 +8,7 @@ import sequtils
 import private/murmur3
 
 const 
-    UINT64_MAX = 9223372036854775807'u64
+    UINT64_MAX = 18446744073709551615'u64
     UINT32_MAX = 4294967295'u32
     defaultRandMax:int32 = 1000000
 
@@ -45,7 +45,7 @@ proc minhash64*(str:string, seeds:openArray[uint32],char_ngram:int) : auto =
     for s in 0..<num_seeds:
         while not finished(slider):
             ngrams = slider(str,char_ngram)
-            MurmurHash3_x64_128(ngrams, char_ngram, cast[uint32](result[s]), hashes)
+            MurmurHash3_x64_128(ngrams, char_ngram, seeds[s], hashes)
             if  hashes[0] < minhash:
                 minhash = hashes[0]
         result[s] = minhash
@@ -67,15 +67,13 @@ proc minhash32*(str: string, seeds:openArray[uint32],char_ngram:int) : auto =
                 minhash = hashes[0]
         result[s] = minhash
 
-proc fingerprint*(self:MinHasher32, text:string): auto =
- 
+proc fingerprint*(self:MinHasher32, text:string): seq[uint32] =
     result = minhash_32(text, self.seeds, self.char_ngram)
     
-proc fingerprint*(self:MinHasher64, text:string): auto =
-
+proc fingerprint*(self:MinHasher64, text:string): seq[uint64] =
     result = minhash_64(text, self.seeds, self.char_ngram)
 
-proc jaccard* [T](self:T, doc1, doc2:string):float=
+proc jaccard*[T](self:T, doc1, doc2:string):float=
     let 
         f_a = toSet(self.fingerprint(doc1))
         f_b = toSet(self.fingerprint(doc2))
@@ -85,19 +83,17 @@ proc initMinHasher*[T](seeds:seq[SomeInteger], char_ngram=8,random_state=0):T=
     result.char_ngram = char_ngram
     result.seeds = seeds
 
-proc initMinHasher* [T](seeds:int, char_ngram=8,random_state=0):T=
+proc initMinHasher*[T](seeds:int, char_ngram=8,random_state=0):T=
     result.char_ngram = char_ngram
     var sed = newSeq[uint32](seeds)
     result.seeds = map(sed,proc(x:uint32):uint32 = cast[uint32](rand(defaultRandMax)))
 
 when isMainModule:
-    
-    let hasher =  initMinHasher[MinHasher32](100,3)
+    let hasher =  initMinHasher[MinHasher64](100,3)
     assert hasher.jaccard("This is a doc", "This is a doc") == 1
 
     let high_j = hasher.jaccard("This is a doc", "That is a doc")
     let low_j = hasher.jaccard("This is a doc", "Cats in a tree")
-    echo low_j,"-",high_j
     assert 0 <= low_j 
     assert low_j < high_j 
     assert high_j <= 1
