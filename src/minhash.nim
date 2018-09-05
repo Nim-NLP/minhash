@@ -16,13 +16,9 @@ type
     MinHasher64* = object
         char_ngram:int
         seeds:seq[uint32]
-
-type 
     MinHasher32* = object
         char_ngram:int
         seeds:seq[uint32]
-
-proc zeros*(N: int, A: typedesc): auto = newSeq[A](N)
 
 iterator slide(content:string, width=4) : string {.closure.} =
     let 
