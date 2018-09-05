@@ -32,52 +32,43 @@ iterator slide(content:string, width=4) : string {.closure.} =
         pos = i + width
         yield content[i..<pos]
 
-proc minhash64*(str:string, seeds:openArray[uint32],char_ngram:int) : auto =
+proc minhash64*(str:string, seeds:openArray[uint32],char_ngram:int) : auto {.noInit.} =
     let strlen = str.len
     let num_seeds = seeds.len
-
     var 
         hashes:array[2,uint64]
-        minhash:uint64 = UINT64_MAX
         ngrams:string
         slider = slide
-    result = zeros(num_seeds,uint64 )
-    for s in 0..<num_seeds:
-        while not finished(slider):
-            ngrams = slider(str,char_ngram)
-            MurmurHash3_x64_128(ngrams, char_ngram, seeds[s], hashes)
-            if  hashes[0] < minhash:
-                minhash = hashes[0]
-        result[s] = minhash
+        s:int
+    result = newSeq[UINT64_MAX](num_seeds)
+    while not finished(slider):
+        ngrams = slider(str,char_ngram)
+        MurmurHash3_x64_128(ngrams, char_ngram, seeds[s], hashes)
+        if  hashes[0] < UINT64_MAX:
+            result[s] = hashes[0]
+        inc s
 
-proc minhash32*(str: string, seeds:openArray[uint32],char_ngram:int) : auto =
+proc minhash32*(str: string, seeds:openArray[uint32],char_ngram:int) : auto {.noInit.}=
     let strlen = str.len
     let num_seeds = seeds.len
     var 
         hashes:array[2,uint32]
-        minhash:uint32 = UINT32_MAX
         ngrams:string
         slider = slide
-    result = zeros(num_seeds,uint32 )
-    for s in 0..<num_seeds:
-        while not finished(slider):
-            ngrams = slider(str,char_ngram)
-            MurmurHash3_x86_32(ngrams, char_ngram, seeds[s], hashes)
-            if hashes[0] < minhash:
-                minhash = hashes[0]
-        result[s] = minhash
+        s:int
+    result = newSeq[UINT32_MAX](num_seeds)
+    while not finished(slider):
+        ngrams = slider(str,char_ngram)
+        MurmurHash3_x86_32(ngrams, char_ngram, seeds[s], hashes)
+        if hashes[0] < UINT32_MAX:
+            result[s] = hashes[0]
+        inc s
 
 proc fingerprint*(self:MinHasher32, text:string): seq[uint32] =
     result = minhash_32(text, self.seeds, self.char_ngram)
     
 proc fingerprint*(self:MinHasher64, text:string): seq[uint64] =
     result = minhash_64(text, self.seeds, self.char_ngram)
-
-# proc jaccard*[T](self:T, doc1, doc2:string):float=
-#     let 
-#         f_a = toSet(self.fingerprint(doc1))
-#         f_b = toSet(self.fingerprint(doc2))
-#     return len( intersection(f_a , f_b)) / len( union(f_a, f_b))
 
 proc jaccard*(self:MinHasher32, doc1, doc2:string):float=
     let 
