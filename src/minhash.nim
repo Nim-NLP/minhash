@@ -8,6 +8,8 @@ import sequtils
 import minhash/murmur3
 import typetraits
 
+export sets
+
 const 
     UINT64_MAX = 18446744073709551615'u64
     UINT32_MAX = 4294967295'u32
@@ -17,9 +19,6 @@ type
     MinHasher*[T] = object
         char_ngram:int
         seeds:seq[uint32]
-    # MinHasher32* = object
-    #     char_ngram:int
-    #     seeds:seq[uint32]
 
 iterator slide(content:string, width=4) : string {.closure.} =
     let 
@@ -60,18 +59,12 @@ proc minhash32*(str: string, seeds:openArray[uint32],char_ngram:int) : auto {.no
         if hashes[0] < UINT32_MAX:
             result[s] = hashes[0]
         inc s
-
-# proc fingerprint*(self:MinHasher32, text:string): seq[uint32] =
-#     result = minhash_32(text, self.seeds, self.char_ngram)
     
 proc fingerprint*[T](self:MinHasher[T], text:string): seq[T] =
-    result = minhash_64(text, self.seeds, self.char_ngram)
-
-# proc jaccard*(self:MinHasher32, doc1, doc2:string):float=
-#     let 
-#         f_a = toSet(self.fingerprint(doc1))
-#         f_b = toSet(self.fingerprint(doc2))
-#     return len( intersection(f_a , f_b)) / len( union(f_a, f_b))
+    when type(T) is uint64:
+        result = minhash_64(text, self.seeds, self.char_ngram)
+    elif type(T) is uint32:
+        result = minhash_64(text, self.seeds, self.char_ngram)
 
 proc jaccard*[T](self:MinHasher[T], doc1, doc2:string):float=
     let 
