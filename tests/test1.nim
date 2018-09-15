@@ -1,6 +1,6 @@
 import minhash
 
-let hasher =  initMinHasher[MinHasher64](100,3)
+let hasher =  initMinHasher[uint64](100,3)
 assert hasher.jaccard("This is a doc", "This is a doc") == 1
 
 let high_j = hasher.jaccard("This is a doc", "That is a doc")

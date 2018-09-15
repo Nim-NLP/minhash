@@ -5,7 +5,8 @@
 import random
 import sets
 import sequtils
-import hash/murmur3
+import minhash/murmur3
+import typetraits
 
 const 
     UINT64_MAX = 18446744073709551615'u64
@@ -13,12 +14,12 @@ const
     defaultRandMax:int32 = 1000000
 
 type 
-    MinHasher64* = object
+    MinHasher*[T] = object
         char_ngram:int
         seeds:seq[uint32]
-    MinHasher32* = object
-        char_ngram:int
-        seeds:seq[uint32]
+    # MinHasher32* = object
+    #     char_ngram:int
+    #     seeds:seq[uint32]
 
 iterator slide(content:string, width=4) : string {.closure.} =
     let 
@@ -60,35 +61,35 @@ proc minhash32*(str: string, seeds:openArray[uint32],char_ngram:int) : auto {.no
             result[s] = hashes[0]
         inc s
 
-proc fingerprint*(self:MinHasher32, text:string): seq[uint32] =
-    result = minhash_32(text, self.seeds, self.char_ngram)
+# proc fingerprint*(self:MinHasher32, text:string): seq[uint32] =
+#     result = minhash_32(text, self.seeds, self.char_ngram)
     
-proc fingerprint*(self:MinHasher64, text:string): seq[uint64] =
+proc fingerprint*[T](self:MinHasher[T], text:string): seq[T] =
     result = minhash_64(text, self.seeds, self.char_ngram)
 
-proc jaccard*(self:MinHasher32, doc1, doc2:string):float=
-    let 
-        f_a = toSet(self.fingerprint(doc1))
-        f_b = toSet(self.fingerprint(doc2))
-    return len( intersection(f_a , f_b)) / len( union(f_a, f_b))
+# proc jaccard*(self:MinHasher32, doc1, doc2:string):float=
+#     let 
+#         f_a = toSet(self.fingerprint(doc1))
+#         f_b = toSet(self.fingerprint(doc2))
+#     return len( intersection(f_a , f_b)) / len( union(f_a, f_b))
 
-proc jaccard*(self:MinHasher64, doc1, doc2:string):float=
+proc jaccard*[T](self:MinHasher[T], doc1, doc2:string):float=
     let 
         f_a = toSet(self.fingerprint(doc1))
         f_b = toSet(self.fingerprint(doc2))
-    return len( intersection(f_a , f_b)) / len( union(f_a, f_b))    
+    return len( f_a.intersection( f_b)) / len( f_a.union( f_b))    
     
-proc initMinHasher*[T](seeds:seq[SomeInteger], char_ngram=8,random_state=0):T=
+proc initMinHasher*[T](seeds:seq[SomeInteger], char_ngram=8,random_state=0):MinHasher[T]=
     result.char_ngram = char_ngram
     result.seeds = seeds
 
-proc initMinHasher*[T](seeds:int, char_ngram=8,random_state=0):T=
+proc initMinHasher*[T](seeds:int, char_ngram=8,random_state=0):MinHasher[T]=
     result.char_ngram = char_ngram
     var sed = newSeq[uint32](seeds)
     result.seeds = map(sed,proc(x:uint32):uint32 = cast[uint32](rand(defaultRandMax)))
 
 when isMainModule:
-    let hasher =  initMinHasher[MinHasher64](100,3)
+    let hasher =  initMinHasher[uint64](100,3)
     assert hasher.jaccard("This is a doc", "This is a doc") == 1
 
     let high_j = hasher.jaccard("This is a doc", "That is a doc")
