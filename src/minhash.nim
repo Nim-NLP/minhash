@@ -64,7 +64,7 @@ proc fingerprint*[T](self:MinHasher[T], text:string): seq[T] =
     when type(T) is uint64:
         result = minhash_64(text, self.seeds, self.char_ngram)
     elif type(T) is uint32:
-        result = minhash_64(text, self.seeds, self.char_ngram)
+        result = minhash32(text, self.seeds, self.char_ngram)
 
 proc jaccard*[T](self:MinHasher[T], doc1, doc2:string):float=
     let 
