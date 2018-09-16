@@ -24,10 +24,10 @@ type
         char_ngram:int
         seeds:seq[uint32]
         num_seeds:int
-    Bin = TableRef[Hash, HashSet[string]]
+    Bin[T] = TableRef[seq[T], HashSet[string]]
     LocalitySensitive*[T] = object
         hasher: MinHasher[T]
-        bins:TableRef[int,Bin]
+        bins:TableRef[int,Bin[T]]
         num_bands:int
         fingerprints:TableRef[string,seq[T]]
         band_width:int
@@ -46,14 +46,14 @@ proc minhash64*(str:string, seeds:openArray[uint32],char_ngram:int) : auto {.noI
         hashes:array[2,uint64]
         ngrams:string
         slider = slide
-        # s:int
+        curHash = UINT64_MAX
     result = newSeq[UINT64_MAX](num_seeds)
     for s in 0..<num_seeds:
-        ngrams = slider(str,char_ngram)
-        MurmurHash3_x64_128(ngrams, char_ngram, seeds[s], hashes)
-        if  hashes[0] < UINT64_MAX:
-            result[s] = hashes[0]
-        # inc s
+        for ngrams in slider(str,char_ngram):
+            MurmurHash3_x64_128(ngrams, char_ngram, seeds[s], hashes)
+            if  hashes[0] < curHash:
+                curHash = hashes[0]
+        result[s] = curHash
 
 proc minhash32*(str: string, seeds:openArray[uint32],char_ngram:int) : auto {.noInit.}=
     let num_seeds = seeds.len
@@ -61,14 +61,14 @@ proc minhash32*(str: string, seeds:openArray[uint32],char_ngram:int) : auto {.no
         hashes:array[2,uint32]
         ngrams:string
         slider = slide
-        # s:int
+        curHash = UINT32_MAX
     result = newSeq[UINT32_MAX](num_seeds)
     for s in 0..<num_seeds:
-        ngrams = slider(str,char_ngram)
-        MurmurHash3_x86_32(ngrams, char_ngram, seeds[s], hashes)
-        if hashes[0] < UINT32_MAX:
-            result[s] = hashes[0]
-        # inc s
+        for ngrams in slider(str,char_ngram):
+            MurmurHash3_x86_32(ngrams, char_ngram, seeds[s], hashes)
+            if hashes[0] < curHash:
+                curHash = hashes[0]
+        result[s] = curHash
     
 proc fingerprint*[T](self:MinHasher[T], text:string): seq[T] =
     when type(T) is uint64:
@@ -96,9 +96,9 @@ proc initMinHasher*[T](num_seeds:int, char_ngram=8,random_state=0):MinHasher[T]=
 proc initLocalitySensitive*[T](hasher: MinHasher[T] , num_bands=10):LocalitySensitive[T] =
     # result.bins = [defaultdict(set) for _ in range(num_bands)]
     # Bin = TableRef[Hash, HashSet[string]]
-    result.bins = newTable[int,Bin]()
+    result.bins = newTable[int,Bin[T]]()
     for i in 0..<num_bands:
-        result.bins[i] = newTable[Hash, HashSet[string]]()
+        result.bins[i] = newTable[seq[T], HashSet[string]]()
 
     result.hasher = hasher
     doAssert hasher.num_seeds mod num_bands == 0, msgDivisible
@@ -107,7 +107,7 @@ proc initLocalitySensitive*[T](hasher: MinHasher[T] , num_bands=10):LocalitySens
     result.fingerprints = newTable[string,seq[T]]()
 
 proc getBins[T](self:LocalitySensitive[T], fingerprint:seq[T]):seq[seq[T]] =
-    result = fingerprint.distribute(self.num_bands)
+    result = fingerprint.distribute(self.band_width )
 # proc bins_(self, fingerprint):
 #     yield from enumerate(np.array_split(fingerprint, self.num_bands))
 
@@ -122,10 +122,10 @@ proc add_doc*[T](self:LocalitySensitive[T], doc:string, doc_id:string) =
 proc add_fingerprint*[T](self:LocalitySensitive[T], fingerprint:seq[T], doc_id:string) =
     self.fingerprints[doc_id] = fingerprint
     for bin_i, bucket in self.getBins(fingerprint).pairs:
-        if self.bins[bin_i].len > 0 and self.bins[bin_i].hasKey(bucket.hash):
-            self.bins[bin_i][bucket.hash].incl doc_id
+        if self.bins[bin_i].len > 0 and self.bins[bin_i].hasKey(bucket):
+            self.bins[bin_i][bucket].incl doc_id
         else:
-            discard self.bins[bin_i].mgetOrPut(bucket.hash, toSet([doc_id]))
+            discard self.bins[bin_i].mgetOrPut(bucket, toSet([doc_id]))
 
 proc filter_candidates*[T](self:LocalitySensitive[T], candidate_id_pairs:seq[tuple[a:string,b:string]], min_jaccard:float):HashSet[string] =
     for id1, id2 in candidate_id_pairs:
@@ -170,8 +170,8 @@ proc get_duplicates_of*[T](self:LocalitySensitive[T], doc="", doc_id="", min_jac
         discard
         # raise ValueError("Must provide a document or a known document id")
     for bin_i, bucket in self.getBins(fingerprint).pairs:
-        if self.bins[bin_i].len > 0 and self.bins[bin_i].hasKey(bucket.hash):
-            result.incl self.bins[bin_i][bucket.hash]
+        if self.bins[bin_i].len > 0 and self.bins[bin_i].hasKey(bucket):
+            result.incl self.bins[bin_i][bucket]
 
     # if min_jaccard != 0:
     #     result = {x for x in candidates
