@@ -19,6 +19,7 @@ const
     defaultRandMax:int32 = 1000000
     msgDivisible = "The number of seeds in the fingerprint must" &
         "be divisible by the number of bands"
+    msgRequireDoc = "Must provide a document or a known document id"
 
 type 
     MinHasher*[T] = object
@@ -113,9 +114,9 @@ proc initLocalitySensitive*[T](hasher: MinHasher[T] , num_bands=10):LocalitySens
 proc getBins[T](self:LocalitySensitive[T], fingerprint:seq[T]):seq[seq[T]] =
     result = fingerprint.distribute(self.band_width )
 
-# proc clear(self):
-#     self.bins = [defaultdict(set) for _ in range(self.num_bands)]
-#     self.hasher.fingerprint.cache_clear()
+proc clear*[T](self:LocalitySensitive[T])=
+    self.bins.clear()
+    self.hasher.seeds.clear()
 
 proc add_doc*[T](self:LocalitySensitive[T], doc:string, doc_id:string) =
     let fingerprint = self.hasher.fingerprint(doc)
@@ -144,12 +145,14 @@ proc remove_id*[T](self:LocalitySensitive[T], doc_id:string) =
 
     del self.fingerprints[doc_id]
 
-# proc remove_doc(self:LocalitySensitive, doc:string) =
-#     let fingerprint = self.hasher.fingerprint(doc)
-#     doc_ids = {id for id, finger in self.fingerprints.items()
-#                 if all(a == b for a, b in zip(finger, fingerprint))}
-#     for i in doc_ids:
-#         self.remove_id(i)
+proc remove_doc*[T](self:LocalitySensitive[T], doc:string) =
+    let fingerprint = self.hasher.fingerprint(doc)
+    var ids:seq[string]
+    for id,finger in self.fingerprints.pairs:
+        if allIt(zip(finger, fingerprint), it[0] == it[1]):
+            ids.add(id)
+    for i in ids:
+        self.remove_id(i)
 
 proc get_all_duplicates*[T](self:LocalitySensitive[T], min_jaccard = 0.0): HashSet[tuple[a:string,b:string]]{.noInit.} =
     var candidates = initSet[tuple[a:string,b:string]]()
@@ -172,16 +175,16 @@ proc get_duplicates_of*[T](self:LocalitySensitive[T], doc="", doc_id="", min_jac
     elif doc != "":
         fingerprint = self.hasher.fingerprint(doc)
     else:
-        discard
-        # raise ValueError("Must provide a document or a known document id")
+        raise newException(ValueError,msgRequireDoc)
     for bin_i, bucket in self.getBins(fingerprint).pairs:
         if self.bins[bin_i].len > 0 and self.bins[bin_i].hasKey(bucket):
             result.incl self.bins[bin_i][bucket]
 
-    # if min_jaccard != 0:
-    #     result = {x for x in candidates
-    #             if self.hasher.jaccard(fingerprint,
-    #                                     self.fingerprints[x]) > min_jaccard}
+    if min_jaccard != 0.0:
+        var filtered = toSeq(result.items)
+        keepIf(filtered, proc(x: string): bool = self.hasher.jaccard(fingerprint,self.fingerprints[x]) > min_jaccard)
+        result = toSet(filtered)
+
 
 proc is_duplicate*[T](self:LocalitySensitive[T], doc:string, doc_id=""):bool =
     return len(self.get_duplicates_of(doc, doc_id)) > 0
