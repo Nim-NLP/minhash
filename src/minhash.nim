@@ -7,6 +7,8 @@ import sets
 import sequtils
 import minhash/murmur3
 import typetraits
+import tables
+import hashes
 
 export sets
 
@@ -14,11 +16,21 @@ const
     UINT64_MAX = 18446744073709551615'u64
     UINT32_MAX = 4294967295'u32
     defaultRandMax:int32 = 1000000
+    msgDivisible = "The number of seeds in the fingerprint must" &
+        "be divisible by the number of bands"
 
 type 
     MinHasher*[T] = object
         char_ngram:int
         seeds:seq[uint32]
+        num_seeds:int
+    Bin = TableRef[Hash, HashSet[string]]
+    LocalitySensitive*[T] = object
+        hasher: MinHasher[T]
+        bins:TableRef[int,Bin]
+        num_bands:int
+        fingerprints:TableRef[string,seq[T]]
+        band_width:int
 
 iterator slide(content:string, width=4) : string {.closure.} =
     let 
@@ -29,36 +41,34 @@ iterator slide(content:string, width=4) : string {.closure.} =
         yield content[i..<pos]
 
 proc minhash64*(str:string, seeds:openArray[uint32],char_ngram:int) : auto {.noInit.} =
-    let strlen = str.len
     let num_seeds = seeds.len
     var 
         hashes:array[2,uint64]
         ngrams:string
         slider = slide
-        s:int
+        # s:int
     result = newSeq[UINT64_MAX](num_seeds)
-    while not finished(slider):
+    for s in 0..<num_seeds:
         ngrams = slider(str,char_ngram)
         MurmurHash3_x64_128(ngrams, char_ngram, seeds[s], hashes)
         if  hashes[0] < UINT64_MAX:
             result[s] = hashes[0]
-        inc s
+        # inc s
 
 proc minhash32*(str: string, seeds:openArray[uint32],char_ngram:int) : auto {.noInit.}=
-    let strlen = str.len
     let num_seeds = seeds.len
     var 
         hashes:array[2,uint32]
         ngrams:string
         slider = slide
-        s:int
+        # s:int
     result = newSeq[UINT32_MAX](num_seeds)
-    while not finished(slider):
+    for s in 0..<num_seeds:
         ngrams = slider(str,char_ngram)
         MurmurHash3_x86_32(ngrams, char_ngram, seeds[s], hashes)
         if hashes[0] < UINT32_MAX:
             result[s] = hashes[0]
-        inc s
+        # inc s
     
 proc fingerprint*[T](self:MinHasher[T], text:string): seq[T] =
     when type(T) is uint64:
@@ -75,12 +85,102 @@ proc jaccard*[T](self:MinHasher[T], doc1, doc2:string):float=
 proc initMinHasher*[T](seeds:seq[SomeInteger], char_ngram=8,random_state=0):MinHasher[T]=
     result.char_ngram = char_ngram
     result.seeds = seeds
+    result.num_seeds = len(seeds)
 
-proc initMinHasher*[T](seeds:int, char_ngram=8,random_state=0):MinHasher[T]=
+proc initMinHasher*[T](num_seeds:int, char_ngram=8,random_state=0):MinHasher[T]=
     result.char_ngram = char_ngram
-    var sed = newSeq[uint32](seeds)
+    result.num_seeds = num_seeds
+    var sed = newSeq[uint32](num_seeds)
     result.seeds = map(sed,proc(x:uint32):uint32 = cast[uint32](rand(defaultRandMax)))
 
+proc initLocalitySensitive*[T](hasher: MinHasher[T] , num_bands=10):LocalitySensitive[T] =
+    # result.bins = [defaultdict(set) for _ in range(num_bands)]
+    # Bin = TableRef[Hash, HashSet[string]]
+    result.bins = newTable[int,Bin]()
+    for i in 0..<num_bands:
+        result.bins[i] = newTable[Hash, HashSet[string]]()
+
+    result.hasher = hasher
+    doAssert hasher.num_seeds mod num_bands == 0, msgDivisible
+    result.band_width = hasher.num_seeds div num_bands
+    result.num_bands = num_bands
+    result.fingerprints = newTable[string,seq[T]]()
+
+proc getBins[T](self:LocalitySensitive[T], fingerprint:seq[T]):seq[seq[T]] =
+    result = fingerprint.distribute(self.num_bands)
+# proc bins_(self, fingerprint):
+#     yield from enumerate(np.array_split(fingerprint, self.num_bands))
+
+# proc clear(self):
+#     self.bins = [defaultdict(set) for _ in range(self.num_bands)]
+#     self.hasher.fingerprint.cache_clear()
+
+proc add_doc*[T](self:LocalitySensitive[T], doc:string, doc_id:string) =
+    let fingerprint = self.hasher.fingerprint(doc)
+    self.add_fingerprint(fingerprint, doc_id)
+
+proc add_fingerprint*[T](self:LocalitySensitive[T], fingerprint:seq[T], doc_id:string) =
+    self.fingerprints[doc_id] = fingerprint
+    for bin_i, bucket in self.getBins(fingerprint).pairs:
+        if self.bins[bin_i].len > 0 and self.bins[bin_i].hasKey(bucket.hash):
+            self.bins[bin_i][bucket.hash].incl doc_id
+        else:
+            discard self.bins[bin_i].mgetOrPut(bucket.hash, toSet([doc_id]))
+
+proc filter_candidates*[T](self:LocalitySensitive[T], candidate_id_pairs:seq[tuple[a:string,b:string]], min_jaccard:float):HashSet[string] =
+    for id1, id2 in candidate_id_pairs:
+        # todo id1, id2 may not be contained in data
+        jaccard = self.hasher.jaccard(self.fingerprints[id1],self.fingerprints[id2])                  
+        if jaccard > min_jaccard:
+            result.add((id1, id2))
+
+proc remove_id*[T](self:LocalitySensitive[T], doc_id:string) =
+    fingerprint = self.fingerprints[doc_id]
+    for bin_i, bucket in self.getBins(fingerprint).pairs:
+        self.bins[bin_i][bucket.hash].remove(doc_id)
+
+    del self.fingerprints[doc_id]
+
+# proc remove_doc(self:LocalitySensitive, doc:string) =
+#     let fingerprint = self.hasher.fingerprint(doc)
+#     doc_ids = {id for id, finger in self.fingerprints.items()
+#                 if all(a == b for a, b in zip(finger, fingerprint))}
+#     for i in doc_ids:
+#         self.remove_id(i)
+
+proc get_all_duplicates*[T](self:LocalitySensitive[T], min_jaccard = 0):HashSet[string] =
+    var pairs:seq[T]
+    for b in self.bins:
+        for bucket_id in b:
+            if len(b[bucket_id]) > 1:
+                pairs = b[bucket_id].distribute(2)
+                result.union(pairs)
+    if min_jaccard != 0:
+        result = self.filter_candidates(result, min_jaccard)
+
+proc get_duplicates_of*[T](self:LocalitySensitive[T], doc="", doc_id="", min_jaccard = 0): HashSet[string] = 
+    var 
+        fingerprint:seq[T]
+    result = initSet[string]()
+    if doc_id != "" and doc_id in self.fingerprints:
+        fingerprint = self.fingerprints[doc_id]
+    elif doc != "":
+        fingerprint = self.hasher.fingerprint(doc)
+    else:
+        discard
+        # raise ValueError("Must provide a document or a known document id")
+    for bin_i, bucket in self.getBins(fingerprint).pairs:
+        if self.bins[bin_i].len > 0 and self.bins[bin_i].hasKey(bucket.hash):
+            result.incl self.bins[bin_i][bucket.hash]
+
+    # if min_jaccard != 0:
+    #     result = {x for x in candidates
+    #             if self.hasher.jaccard(fingerprint,
+    #                                     self.fingerprints[x]) > min_jaccard}
+
+proc is_duplicate*[T](self:LocalitySensitive[T], doc:string, doc_id=""):bool =
+    return len(self.get_duplicates_of(doc, doc_id)) > 0
+    
 when isMainModule:
     let hasher =  initMinHasher[uint64](100,3)
     assert hasher.jaccard("This is a doc", "This is a doc") == 1
