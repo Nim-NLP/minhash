@@ -1,7 +1,7 @@
 # minhash
 # Copyright zhoupeng
 # Nim implementation of minhash algoritim
-# port from https://github.com/mattilyra/LSH/blob/3db37cf07eefa3276e7409b12e73f30f596236ae/lsh/cMinhash.pyx
+# port from https://github.com/mattilyra/LSH/
 import random
 import sets
 import sequtils
@@ -35,8 +35,7 @@ type
         band_width:int
 
 iterator slide(content:string, width=4) : string {.closure.} =
-    let 
-        maxLen = max(content.len - width + 1, 1)
+    let maxLen = max(content.len - width + 1, 1)
     var pos:int
     for i in 0..<maxLen:
         pos = i + width
@@ -118,11 +117,11 @@ proc clear*[T](self:LocalitySensitive[T])=
     self.bins.clear()
     self.hasher.seeds.clear()
 
-proc add_doc*[T](self:LocalitySensitive[T], doc:string, doc_id:string) =
+proc add*[T](self:LocalitySensitive[T], doc:string, doc_id:string) =
     let fingerprint = self.hasher.fingerprint(doc)
-    self.add_fingerprint(fingerprint, doc_id)
+    self.add(fingerprint, doc_id)
 
-proc add_fingerprint*[T](self:LocalitySensitive[T], fingerprint:seq[T], doc_id:string) =
+proc add*[T](self:LocalitySensitive[T], fingerprint:seq[T], doc_id:string) =
     self.fingerprints[doc_id] = fingerprint
     for bin_i, bucket in self.getBins(fingerprint).pairs:
         if self.bins[bin_i].len > 0 and self.bins[bin_i].hasKey(bucket):
@@ -130,7 +129,7 @@ proc add_fingerprint*[T](self:LocalitySensitive[T], fingerprint:seq[T], doc_id:s
         else:
             discard self.bins[bin_i].mgetOrPut(bucket, toSet([doc_id]))
 
-proc filter_candidates*[T](self:LocalitySensitive[T], candidate_id_pairs:HashSet[tuple[a:string,b:string]], min_jaccard:float):HashSet[tuple[a:string,b:string]]=
+proc filterCandidates*[T](self:LocalitySensitive[T], candidate_id_pairs:HashSet[tuple[a:string,b:string]], min_jaccard:float):HashSet[tuple[a:string,b:string]]=
     var jaccard:float
     for id1, id2 in candidate_id_pairs.items:
         # todo id1, id2 may not be contained in data
@@ -138,23 +137,22 @@ proc filter_candidates*[T](self:LocalitySensitive[T], candidate_id_pairs:HashSet
         if jaccard > min_jaccard:
             result.incl((id1, id2))
 
-proc remove_id*[T](self:LocalitySensitive[T], doc_id:string) =
+proc remove*[T](self:LocalitySensitive[T], doc_id:string) =
     let fingerprint = self.fingerprints[doc_id]
     for bin_i, bucket in self.getBins(fingerprint).pairs:
         self.bins[bin_i][bucket].remove(doc_id)
-
     del self.fingerprints[doc_id]
 
-proc remove_doc*[T](self:LocalitySensitive[T], doc:string) =
-    let fingerprint = self.hasher.fingerprint(doc)
-    var ids:seq[string]
-    for id,finger in self.fingerprints.pairs:
-        if allIt(zip(finger, fingerprint), it[0] == it[1]):
-            ids.add(id)
-    for i in ids:
-        self.remove_id(i)
+# proc removeDoc[T](self:LocalitySensitive[T], doc:string) =
+#     let fingerprint = self.hasher.fingerprint(doc)
+#     var ids:seq[string]
+#     for id,finger in self.fingerprints.pairs:
+#         if allIt(zip(finger, fingerprint), it[0] == it[1]):
+#             ids.add(id)
+#     for i in ids:
+#         self.remove(i)
 
-proc get_all_duplicates*[T](self:LocalitySensitive[T], min_jaccard = 0.0): HashSet[tuple[a:string,b:string]]{.noInit.} =
+proc getDuplicates*[T](self:LocalitySensitive[T], min_jaccard = 0.0): HashSet[tuple[a:string,b:string]]{.noInit.} =
     var candidates = initSet[tuple[a:string,b:string]]()
     for b in self.bins.values:
         for bucket in b.keys:
@@ -162,11 +160,11 @@ proc get_all_duplicates*[T](self:LocalitySensitive[T], min_jaccard = 0.0): HashS
                 for x in combinations(toSeq(b[bucket].items()),2):
                     candidates.incl( (a:x[0],b:x[1]) )
     if min_jaccard != 0.0:
-        result = self.filter_candidates(candidates, min_jaccard)
+        result = self.filterCandidates(candidates, min_jaccard)
     else:
         result = candidates
 
-proc get_duplicates_of*[T](self:LocalitySensitive[T], doc="", doc_id="", min_jaccard = 0.0): HashSet[string] = 
+proc getDuplicatesOf*[T](self:LocalitySensitive[T], doc="", doc_id="", min_jaccard = 0.0): HashSet[string] = 
     var 
         fingerprint:seq[T]
     result = initSet[string]()
@@ -179,22 +177,10 @@ proc get_duplicates_of*[T](self:LocalitySensitive[T], doc="", doc_id="", min_jac
     for bin_i, bucket in self.getBins(fingerprint).pairs:
         if self.bins[bin_i].len > 0 and self.bins[bin_i].hasKey(bucket):
             result.incl self.bins[bin_i][bucket]
-
     if min_jaccard != 0.0:
         var filtered = toSeq(result.items)
         keepIf(filtered, proc(x: string): bool = self.hasher.jaccard(fingerprint,self.fingerprints[x]) > min_jaccard)
         result = toSet(filtered)
 
-
-proc is_duplicate*[T](self:LocalitySensitive[T], doc:string, doc_id=""):bool =
-    return len(self.get_duplicates_of(doc, doc_id)) > 0
-    
-when isMainModule:
-    let hasher =  initMinHasher[uint64](100,3)
-    assert hasher.jaccard("This is a doc", "This is a doc") == 1
-
-    let high_j = hasher.jaccard("This is a doc", "That is a doc")
-    let low_j = hasher.jaccard("This is a doc", "Cats in a tree")
-    assert 0 <= low_j 
-    assert low_j < high_j 
-    assert high_j <= 1
+proc isDuplicate*[T](self:LocalitySensitive[T], doc:string, doc_id=""):bool =
+    return len(self.getDuplicatesOf(doc, doc_id)) > 0
