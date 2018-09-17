@@ -20,10 +20,12 @@ const
     msgDivisible = "The number of seeds in the fingerprint must" &
         "be divisible by the number of bands"
     msgRequireDoc = "Must provide a document or a known document id"
+    slideWidth = 3
 
 type 
     MinHasher*[T] = object
-        char_ngram:int
+        # char_ngram:int
+        tokenizer: iterator (x:string) : (string,int)
         seeds:seq[uint32]
         num_seeds:int
     Bin[T] = TableRef[seq[T], HashSet[string]]
@@ -34,14 +36,22 @@ type
         fingerprints:TableRef[string,seq[T]]
         band_width:int
 
-iterator slide(content:string, width=4) : string {.closure.} =
-    let maxLen = max(content.len - width + 1, 1)
+proc getDefaultTokenizer*() : iterator (content:string) : (string,int){.closure.}=
+    result = iterator(content:string) : (string,int) =
+        let maxLen = max(content.len - slideWidth + 1, 1)
+        var pos:int
+        for i in 0..<maxLen:
+            pos = i + slideWidth
+            yield (content[i..<pos],slideWidth)
+
+iterator slide*(content:string) : (string,int){.closure.} =
+    let maxLen = max(content.len - slideWidth + 1, 1)
     var pos:int
     for i in 0..<maxLen:
-        pos = i + width
-        yield content[i..<pos]
-
-proc minhash64*(str:string, seeds:openArray[uint32],char_ngram:int) : auto {.noInit.} =
+        pos = i + slideWidth
+        yield (content[i..<pos],slideWidth)
+            
+proc minhash64*(str:string, seeds:openArray[uint32],tokenizer:iterator (x:string) : (string,int){.closure.} ) : auto {.noInit.} =
     let num_seeds = seeds.len
     var 
         hashes:array[2,uint64]
@@ -50,13 +60,14 @@ proc minhash64*(str:string, seeds:openArray[uint32],char_ngram:int) : auto {.noI
     result = newSeq[UINT64_MAX](num_seeds)
     for s in 0..<num_seeds:
         curHash = UINT64_MAX
-        for ngrams in slide(str,char_ngram):
+        for ngrams,char_ngram in tokenizer(str):
+            echo ngrams,char_ngram
             MurmurHash3_x64_128(ngrams, char_ngram, seeds[s], hashes)
             if  hashes[0] < curHash:
                 curHash = hashes[0]
         result[s] = curHash
 
-proc minhash32*(str: string, seeds:openArray[uint32],char_ngram:int) : auto {.noInit.}=
+proc minhash32*(str: string, seeds:openArray[uint32],tokenizer:iterator (x:string) : (string,int){.closure.}) : auto {.noInit.}=
     let num_seeds = seeds.len
     var 
         hashes:array[2,uint32]
@@ -65,7 +76,7 @@ proc minhash32*(str: string, seeds:openArray[uint32],char_ngram:int) : auto {.no
     result = newSeq[UINT32_MAX](num_seeds)
     for s in 0..<num_seeds:
         curHash = UINT32_MAX
-        for ngrams in slide(str,char_ngram):
+        for ngrams,char_ngram in tokenizer(str):
             MurmurHash3_x86_32(ngrams, char_ngram, seeds[s], hashes)
             if hashes[0] < curHash:
                 curHash = hashes[0]
@@ -73,9 +84,9 @@ proc minhash32*(str: string, seeds:openArray[uint32],char_ngram:int) : auto {.no
     
 proc fingerprint*[T](self:MinHasher[T], text:string): seq[T] =
     when type(T) is uint64:
-        result = minhash_64(text, self.seeds, self.char_ngram)
+        result = minhash_64(text, self.seeds, self.tokenizer)
     elif type(T) is uint32:
-        result = minhash32(text, self.seeds, self.char_ngram)
+        result = minhash32(text, self.seeds, self.tokenizer)
 
 proc jaccard*[T](self:MinHasher[T], doc1, doc2:string):float=
     let 
@@ -89,17 +100,30 @@ proc jaccard*[T](self:MinHasher[T], fingerprint1, fingerprint2:openArray[T]):flo
         f_b = toSet(fingerprint2)
     return len( f_a.intersection( f_b)) / len( f_a.union( f_b))     
     
-proc initMinHasher*[T](seeds:seq[SomeInteger], char_ngram=8,random_state=0):MinHasher[T]=
-    result.char_ngram = char_ngram
+proc initMinHasher*[T](seeds:seq[SomeInteger], tokenizer:iterator (x:string) : (string,int)):MinHasher[T]=
+    result.tokenizer = tokenizer
     result.seeds = seeds
     result.num_seeds = len(seeds)
 
-proc initMinHasher*[T](num_seeds:int, char_ngram=8,random_state=0):MinHasher[T]=
-    result.char_ngram = char_ngram
+proc initMinHasher*[T](num_seeds:int, tokenizer :iterator (x:string) : (string,int)):MinHasher[T]=
+    result.tokenizer = tokenizer
     result.num_seeds = num_seeds
     var sed = newSeq[uint32](num_seeds)
     result.seeds = map(sed,proc(x:uint32):uint32 = cast[uint32](rand(defaultRandMax)))
 
+# proc initMinHasher*[T](seeds:seq[SomeInteger]):MinHasher[T]=
+#     let to = getDefaultTokenizer()
+#     result.tokenizer = to
+#     result.seeds = seeds
+#     result.num_seeds = len(seeds)
+
+# proc initMinHasher*[T](num_seeds:int):MinHasher[T]=
+#     let to = getDefaultTokenizer()
+#     result.tokenizer = to
+#     result.num_seeds = num_seeds
+#     var sed = newSeq[uint32](num_seeds)
+#     result.seeds = map(sed,proc(x:uint32):uint32 = cast[uint32](rand(defaultRandMax)))
+    
 proc initLocalitySensitive*[T](hasher: MinHasher[T] , num_bands=10):LocalitySensitive[T] =
     result.bins = newTable[int,Bin[T]]()
     for i in 0..<num_bands:
