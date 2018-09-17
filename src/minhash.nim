@@ -55,7 +55,7 @@ proc minhash64*(str:string, seeds:openArray[uint32],tokenizer:iterator (x:string
     let num_seeds = seeds.len
     var 
         hashes:array[2,uint64]
-        ngrams:string
+        # ngrams:string
         curHash:uint64
     result = newSeq[UINT64_MAX](num_seeds)
     for s in 0..<num_seeds:
@@ -70,13 +70,13 @@ proc minhash32*(str: string, seeds:openArray[uint32],tokenizer:iterator (x:strin
     let num_seeds = seeds.len
     var 
         hashes:array[2,uint32]
-        ngrams:string
+        # ngrams:string
         curHash:uint32
     result = newSeq[UINT32_MAX](num_seeds)
     for s in 0..<num_seeds:
         curHash = UINT32_MAX
         for ngrams in tokenizer(str):
-            MurmurHash3_x86_128(ngrams, ngrams.len, seeds[s], hashes)
+            MurmurHash3_x86_32(ngrams, ngrams.len, seeds[s], hashes)
             if hashes[0] < curHash:
                 curHash = hashes[0]
         result[s] = curHash
