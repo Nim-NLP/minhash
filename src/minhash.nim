@@ -41,7 +41,12 @@ iterator slide*(content:string) : string{.closure.} =
     for i in 0..<maxLen:
         pos = i + slideWidth
         yield content[i..<pos]
-            
+
+proc resetGen[T: proc](x: T, n: int) {.noSideEffect, inline.} =
+    {.emit: """
+    ((NI*) `x`.ClE_0)[1] = `n`;
+    """.}
+        
 proc minhash64*(str:string, seeds:openArray[uint32],tokenizer:iterator (x:string) : string {.closure.} ) :  auto {.noInit.} =
     let num_seeds = seeds.len
     var 
@@ -55,6 +60,7 @@ proc minhash64*(str:string, seeds:openArray[uint32],tokenizer:iterator (x:string
             if  hashes[0] < curHash:
                 curHash = hashes[0]
         result[s] = curHash
+        resetGen(tokenizer,0)
 
 proc minhash32*(str: string, seeds:openArray[uint32],tokenizer:iterator (x:string) : string {.closure.}) : auto {.noInit.}=
     let num_seeds = seeds.len
@@ -69,6 +75,7 @@ proc minhash32*(str: string, seeds:openArray[uint32],tokenizer:iterator (x:strin
             if hashes[0] < curHash:
                 curHash = hashes[0]
         result[s] = curHash
+        resetGen(tokenizer,0)
     
 proc fingerprint*[T](self:MinHasher[T], text:string): seq[T] =
     when type(T) is uint64:
