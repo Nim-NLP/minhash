@@ -3,7 +3,7 @@ import strutils
 import sets
 import sequtils
 # [20, 40, 50]
-let hasher =  initMinHasher[uint64](100)
+let hasher =  initMinHasher[uint64](100,getDefaultTokenizer)
 # very small band width => always find duplicates
 var lsh = initLocalitySensitive[uint64](hasher, 20)
 let 
