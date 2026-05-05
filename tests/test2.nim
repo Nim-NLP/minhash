@@ -14,7 +14,7 @@ let
 
 assert  lsh.isDuplicate(short_doc) == false
 lsh.add(short_doc, "0")
-assert lsh.getDuplicatesOf(short_doc) == toSet(["0"])
+assert lsh.getDuplicatesOf(short_doc) == toHashSet(["0"])
 assert lsh.isDuplicate(short_doc, "0")
 assert lsh.isDuplicate(short_doc)
 
@@ -31,15 +31,23 @@ var long_doc_missing_word = newSeq[string]()
 long_doc_missing_word.add(words[0])
 long_doc_missing_word.add(words[2..^1])
 var longstr=long_doc_missing_word.join(" ")
-assert lsh.getDuplicatesOf(longstr) == toSet(["1"])
+assert lsh.getDuplicatesOf(longstr) == toHashSet(["1"])
 assert lsh.isDuplicate(longstr)
 assert lsh.isDuplicate(long_doc & " Word.")
 
 assert lsh.getDuplicates().len == 0
 lsh.add(longstr, "3")
 
-assert lsh.getDuplicates() == toSet([(a:"1", b:"3")])
+assert lsh.getDuplicates() == toHashSet([(a:"1", b:"3")])
 
 lsh.add(longstr, "4")
 
-assert lsh.getDuplicates().intersection(toSet([(a:"1",b:"4"), (a:"4", b:"3"), (a:"1", b:"3")])).len == 3
+let allDups = lsh.getDuplicates()
+assert allDups.len == 3
+# Normalize: check each pair as an unordered set of ids
+var idsPerPair: seq[HashSet[string]]
+for d in allDups:
+  idsPerPair.add(toHashSet([d.a, d.b]))
+assert idsPerPair.contains(toHashSet(["1", "3"]))
+assert idsPerPair.contains(toHashSet(["1", "4"]))
+assert idsPerPair.contains(toHashSet(["3", "4"]))

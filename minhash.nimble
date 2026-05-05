@@ -8,5 +8,8 @@ srcDir        = "src"
 
 # Dependencies
 
-requires "nim >= 0.18.1"
+requires "nim >= 1.6.0"
 
+task test, "Run tests":
+  exec "nim c -r tests/test1.nim"
+  exec "nim c -r tests/test2.nim"
