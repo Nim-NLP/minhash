@@ -10,7 +10,7 @@ import minhash/combinatorics
 import tables
 import hashes
 
-export sets
+export sets, murmur3
 
 const
     UINT64_MAX = 18446744073709551615'u64
